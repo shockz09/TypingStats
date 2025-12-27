@@ -22,7 +22,15 @@ A minimal macOS menubar app that tracks your daily keystrokes with iCloud sync a
 
 ## Installation
 
-### Download (Recommended)
+### Homebrew (Recommended)
+
+```bash
+brew install shockz09/tap/typingstats
+```
+
+Then grant Accessibility permission when prompted on first launch.
+
+### Manual Download
 
 1. Download `TypingStats-v1.0.0.zip` from the [Releases](../../releases) page
 2. Unzip and drag `TypingStats.app` to your Applications folder
@@ -37,7 +45,7 @@ Requirements:
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/TypingStats.git
+git clone https://github.com/shockz09/TypingStats.git
 cd TypingStats
 
 # Build release version
