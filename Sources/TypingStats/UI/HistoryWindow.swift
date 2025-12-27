@@ -182,12 +182,12 @@ final class HistoryWindowController {
         newWindow.styleMask = [.titled, .closable, .miniaturizable]
         newWindow.setContentSize(NSSize(width: 550, height: 500))
 
-        // Position window to the left side of screen
+        // Position window to the right side of screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
             let windowFrame = newWindow.frame
-            let x = screenFrame.minX + 80  // 80px from left edge
-            let y = screenFrame.midY - windowFrame.height / 2  // Vertically centered
+            let x = screenFrame.maxX - windowFrame.width - 80  // 80px from right edge
+            let y = screenFrame.maxY - windowFrame.height - 50  // Near top
             newWindow.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
