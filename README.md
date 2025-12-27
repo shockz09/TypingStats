@@ -18,7 +18,7 @@ A minimal macOS menubar app that tracks your daily keystrokes with iCloud sync a
 
 ## Demo
 
-https://github.com/shockz09/TypingStats/raw/main/demo.mp4
+<video src="https://github.com/shockz09/TypingStats/raw/main/demo.mp4" controls width="600"></video>
 
 ## Installation
 
