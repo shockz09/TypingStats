@@ -16,9 +16,9 @@ A minimal macOS menubar app that tracks your daily keystrokes with iCloud sync a
 - **No Xcode required** - builds with Swift Package Manager
 - **Privacy-focused** - all data stays in your iCloud, no third-party servers
 
-## Screenshot
+## Demo
 
-<!-- Add screenshot here -->
+https://github.com/shockz09/TypingStats/raw/main/demo.mp4
 
 ## Installation
 
