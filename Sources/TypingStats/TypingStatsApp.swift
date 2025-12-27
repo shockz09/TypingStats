@@ -13,6 +13,12 @@ struct TypingStatsApp: App {
     }
 }
 
+// MARK: - Display Mode
+enum DisplayMode: String {
+    case keystrokes
+    case words
+}
+
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemManager: StatusItemManager!
@@ -20,6 +26,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionManager: PermissionManager!
     private var historyWindowController = HistoryWindowController()
     private var cancellables = Set<AnyCancellable>()
+
+    private var displayMode: DisplayMode {
+        get {
+            DisplayMode(rawValue: UserDefaults.standard.string(forKey: "displayMode") ?? "keystrokes") ?? .keystrokes
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "displayMode")
+            updateStatusItemForMode()
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize managers
@@ -32,12 +48,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showMenu()
         }
 
-        // Update status item when keystroke count changes
+        // Update status item when stats change
         repository.$todayStats
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] stats in
-                let count = Int(stats?.totalKeystrokes ?? 0)
-                self?.statusItemManager.updateCount(count)
+            .sink { [weak self] _ in
+                self?.updateStatusItemForMode()
             }
             .store(in: &cancellables)
 
@@ -55,6 +70,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
     }
 
+    private func updateStatusItemForMode() {
+        let count: Int
+        switch displayMode {
+        case .keystrokes:
+            count = Int(repository.todayStats?.totalKeystrokes ?? 0)
+        case .words:
+            count = Int(repository.todayStats?.totalWords ?? 0)
+        }
+        statusItemManager.updateCount(count)
+    }
+
     private func showMenu() {
         guard let button = statusItemManager.statusItem?.button else { return }
 
@@ -62,25 +88,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Check if we have permission
         if permissionManager.isAuthorized {
-            // Stats section
-            let todayItem = NSMenuItem(title: "Today: \(formatNumber(repository.todayStats?.totalKeystrokes ?? 0))", action: nil, keyEquivalent: "")
+            // Stats section - show words or keystrokes based on mode
+            let (today, yesterday, avg7, avg30, record, recordDateStr) = statsForCurrentMode()
+
+            let todayItem = NSMenuItem(title: "Today: \(formatNumber(today))", action: nil, keyEquivalent: "")
             todayItem.isEnabled = false
             menu.addItem(todayItem)
 
-            let yesterdayItem = NSMenuItem(title: "Yesterday: \(formatNumber(repository.yesterdayCount))", action: nil, keyEquivalent: "")
+            let yesterdayItem = NSMenuItem(title: "Yesterday: \(formatNumber(yesterday))", action: nil, keyEquivalent: "")
             yesterdayItem.isEnabled = false
             menu.addItem(yesterdayItem)
 
-            let avg7Item = NSMenuItem(title: "7-day avg: \(formatNumber(repository.sevenDayAvg))", action: nil, keyEquivalent: "")
+            let avg7Item = NSMenuItem(title: "7-day avg: \(formatNumber(avg7))", action: nil, keyEquivalent: "")
             avg7Item.isEnabled = false
             menu.addItem(avg7Item)
 
-            let avg30Item = NSMenuItem(title: "30-day avg: \(formatNumber(repository.thirtyDayAvg))", action: nil, keyEquivalent: "")
+            let avg30Item = NSMenuItem(title: "30-day avg: \(formatNumber(avg30))", action: nil, keyEquivalent: "")
             avg30Item.isEnabled = false
             menu.addItem(avg30Item)
 
-            if repository.recordCount > 0 {
-                let recordItem = NSMenuItem(title: "Record: \(formatNumber(repository.recordCount)) (\(repository.recordDate))", action: nil, keyEquivalent: "")
+            if record > 0 {
+                let recordItem = NSMenuItem(title: "Record: \(formatNumber(record)) (\(recordDateStr))", action: nil, keyEquivalent: "")
                 recordItem.isEnabled = false
                 menu.addItem(recordItem)
             }
@@ -98,6 +126,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(historyItem)
 
         menu.addItem(NSMenuItem.separator())
+
+        // Display Mode Toggle
+        let modeTitle = displayMode == .keystrokes ? "Show Words" : "Show Keystrokes"
+        let modeItem = NSMenuItem(title: modeTitle, action: #selector(toggleDisplayMode), keyEquivalent: "")
+        modeItem.target = self
+        menu.addItem(modeItem)
 
         // Start at Login
         let loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleStartAtLogin), keyEquivalent: "")
@@ -124,12 +158,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return formatter.string(from: NSNumber(value: number)) ?? "\(number)"
     }
 
+    private func statsForCurrentMode() -> (today: UInt64, yesterday: UInt64, avg7: UInt64, avg30: UInt64, record: UInt64, recordDate: String) {
+        switch displayMode {
+        case .keystrokes:
+            return (
+                repository.todayStats?.totalKeystrokes ?? 0,
+                repository.yesterdayCount,
+                repository.sevenDayAvg,
+                repository.thirtyDayAvg,
+                repository.recordCount,
+                repository.recordDate
+            )
+        case .words:
+            return (
+                repository.todayStats?.totalWords ?? 0,
+                repository.yesterdayWords,
+                repository.sevenDayAvgWords,
+                repository.thirtyDayAvgWords,
+                repository.recordWords,
+                repository.recordWordsDate
+            )
+        }
+    }
+
+    @objc private func toggleDisplayMode() {
+        displayMode = displayMode == .keystrokes ? .words : .keystrokes
+    }
+
     @objc private func grantPermission() {
         permissionManager.requestAuthorization()
     }
 
     @objc private func viewHistory() {
-        historyWindowController.show(stats: repository.getAllStats())
+        historyWindowController.show(stats: repository.getAllStats(), displayMode: displayMode)
     }
 
     @objc private func toggleStartAtLogin() {

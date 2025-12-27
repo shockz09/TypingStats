@@ -1,11 +1,13 @@
 import Foundation
 
 /// Represents keystroke statistics for a single day
-struct DailyStats: Codable, Identifiable, Equatable {
+struct DailyStats: Identifiable, Equatable {
     /// Date identifier in YYYY-MM-DD format
     let id: String
     /// G-Counter for this day's keystrokes
     var counter: GCounter
+    /// G-Counter for this day's words
+    var wordCounter: GCounter
     /// When this record was first created
     let createdAt: Date
     /// Last modification time
@@ -16,9 +18,15 @@ struct DailyStats: Codable, Identifiable, Equatable {
         counter.total
     }
 
+    /// Total words across all devices for this day
+    var totalWords: UInt64 {
+        wordCounter.total
+    }
+
     init(date: Date = Date()) {
         self.id = DateHelpers.dateID(from: date)
         self.counter = GCounter()
+        self.wordCounter = GCounter()
         self.createdAt = date
         self.modifiedAt = date
     }
@@ -29,10 +37,34 @@ struct DailyStats: Codable, Identifiable, Equatable {
         modifiedAt = Date()
     }
 
+    /// Increment the word count for the current device
+    mutating func incrementWords(by amount: UInt64 = 1) {
+        wordCounter.increment(deviceID: DeviceIdentifier.current, by: amount)
+        modifiedAt = Date()
+    }
+
     /// Merge with another DailyStats (for iCloud sync)
     mutating func merge(with other: DailyStats) {
         counter.merge(with: other.counter)
+        wordCounter.merge(with: other.wordCounter)
         modifiedAt = Date()
+    }
+}
+
+// MARK: - Codable (backward-compatible)
+extension DailyStats: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, counter, wordCounter, createdAt, modifiedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        counter = try container.decode(GCounter.self, forKey: .counter)
+        // Backward-compatible: old data won't have wordCounter
+        wordCounter = try container.decodeIfPresent(GCounter.self, forKey: .wordCounter) ?? GCounter()
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
     }
 }
 

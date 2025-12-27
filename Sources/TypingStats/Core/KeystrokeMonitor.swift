@@ -4,7 +4,11 @@ import Combine
 /// Monitors global keystrokes using CGEventTap
 final class KeystrokeMonitor: ObservableObject {
     @Published private(set) var keystrokeCount: UInt64 = 0
+    @Published private(set) var wordCount: UInt64 = 0
     @Published private(set) var isRunning = false
+
+    // Word separator keycodes
+    private static let wordSeparators: Set<Int64> = [49, 36, 76, 48]  // space, enter, return, tab
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -40,8 +44,13 @@ final class KeystrokeMonitor: ObservableObject {
                 let monitor = Unmanaged<KeystrokeMonitor>.fromOpaque(refcon).takeUnretainedValue()
 
                 if type == .keyDown {
+                    let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+                    let isWordSeparator = KeystrokeMonitor.wordSeparators.contains(keycode)
                     DispatchQueue.main.async {
                         monitor.keystrokeCount += 1
+                        if isWordSeparator {
+                            monitor.wordCount += 1
+                        }
                     }
                 }
 

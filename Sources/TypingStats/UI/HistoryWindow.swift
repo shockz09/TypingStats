@@ -17,6 +17,7 @@ enum TimeRange: String, CaseIterable {
 
 struct HistoryView: View {
     let allStats: [DailyStats]
+    let displayMode: DisplayMode
     @State private var selectedRange: TimeRange = .month
 
     private var filteredStats: [DailyStats] {
@@ -25,12 +26,17 @@ struct HistoryView: View {
         return allStats.filter { $0.id >= cutoffID }.sorted { $0.id < $1.id }
     }
 
+    private func getCount(for stats: DailyStats?) -> UInt64 {
+        guard let stats = stats else { return 0 }
+        return displayMode == .keystrokes ? stats.totalKeystrokes : stats.totalWords
+    }
+
     private var chartData: [ChartDataPoint] {
         // Create data points for all days in range, even if no data
         var points: [ChartDataPoint] = []
         for i in (0..<selectedRange.days).reversed() {
             let dateID = DateHelpers.dateID(daysAgo: i)
-            let count = allStats.first(where: { $0.id == dateID })?.totalKeystrokes ?? 0
+            let count = getCount(for: allStats.first(where: { $0.id == dateID }))
             if let date = DateHelpers.date(from: dateID) {
                 points.append(ChartDataPoint(date: date, count: count, dateID: dateID))
             }
@@ -42,7 +48,7 @@ struct HistoryView: View {
         // Show all days in selected range, with 0 for missing days
         (0..<selectedRange.days).map { i in
             let dateID = DateHelpers.dateID(daysAgo: i)
-            let count = allStats.first(where: { $0.id == dateID })?.totalKeystrokes ?? 0
+            let count = getCount(for: allStats.first(where: { $0.id == dateID }))
             return (dateID: dateID, count: count)
         }
     }
@@ -55,7 +61,7 @@ struct HistoryView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header with picker
             HStack {
-                Text("Keystroke History")
+                Text(displayMode == .keystrokes ? "Keystroke History" : "Word History")
                     .font(.title2)
                     .fontWeight(.bold)
 
@@ -77,7 +83,7 @@ struct HistoryView: View {
             Chart(chartData) { point in
                 BarMark(
                     x: .value("Date", point.date, unit: .day),
-                    y: .value("Keystrokes", point.count)
+                    y: .value(displayMode == .keystrokes ? "Keystrokes" : "Words", point.count)
                 )
                 .foregroundStyle(Color.accentColor)
                 .cornerRadius(2)
@@ -163,17 +169,17 @@ final class HistoryWindowController {
         }
     }
 
-    func show(stats: [DailyStats]) {
+    func show(stats: [DailyStats], displayMode: DisplayMode) {
         // Update existing window if open
         if let existingWindow = window {
-            hostingController?.rootView = HistoryView(allStats: stats)
+            hostingController?.rootView = HistoryView(allStats: stats, displayMode: displayMode)
             existingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
         // Create new window
-        let historyView = HistoryView(allStats: stats)
+        let historyView = HistoryView(allStats: stats, displayMode: displayMode)
         let hosting = NSHostingController(rootView: historyView)
         hostingController = hosting
 

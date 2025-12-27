@@ -12,6 +12,13 @@ final class StatsRepository: ObservableObject {
     @Published private(set) var recordCount: UInt64 = 0
     @Published private(set) var recordDate: String = ""
 
+    // Word stats
+    @Published private(set) var yesterdayWords: UInt64 = 0
+    @Published private(set) var sevenDayAvgWords: UInt64 = 0
+    @Published private(set) var thirtyDayAvgWords: UInt64 = 0
+    @Published private(set) var recordWords: UInt64 = 0
+    @Published private(set) var recordWordsDate: String = ""
+
     private let localStore = LocalStore()
     private let cloudSync = iCloudSync()
     private var keystrokeMonitor: KeystrokeMonitor?
@@ -20,6 +27,7 @@ final class StatsRepository: ObservableObject {
     private var saveTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     private var lastKeystrokeCount: UInt64 = 0
+    private var lastWordCount: UInt64 = 0
 
     init() {
         loadInitialData()
@@ -50,6 +58,20 @@ final class StatsRepository: ObservableObject {
                     self.recordKeystrokes(delta)
                 }
                 self.lastKeystrokeCount = newCount
+            }
+            .store(in: &cancellables)
+
+        // Monitor word count changes
+        monitor.$wordCount
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newCount in
+                guard let self = self else { return }
+                let delta = newCount - self.lastWordCount
+                if delta > 0 {
+                    self.recordWords(delta)
+                }
+                self.lastWordCount = newCount
             }
             .store(in: &cancellables)
 
@@ -144,6 +166,25 @@ final class StatsRepository: ObservableObject {
         scheduleSave()
     }
 
+    /// Record multiple words at once (for batching)
+    func recordWords(_ count: UInt64) {
+        guard count > 0 else { return }
+
+        let today = DateHelpers.todayID()
+
+        if var stats = statsCache[today] {
+            stats.incrementWords(by: count)
+            statsCache[today] = stats
+        } else {
+            var stats = DailyStats()
+            stats.incrementWords(by: count)
+            statsCache[today] = stats
+        }
+
+        updatePublishedStats()
+        scheduleSave()
+    }
+
     /// Debounced save to avoid excessive I/O
     private func scheduleSave() {
         saveTask?.cancel()
@@ -174,14 +215,18 @@ final class StatsRepository: ObservableObject {
         // Yesterday
         let yesterday = DateHelpers.dateID(daysAgo: 1)
         yesterdayCount = statsCache[yesterday]?.totalKeystrokes ?? 0
+        yesterdayWords = statsCache[yesterday]?.totalWords ?? 0
 
         // 7-day average (excluding today)
         let last7Days = (1...7).compactMap { statsCache[DateHelpers.dateID(daysAgo: $0)] }
         if !last7Days.isEmpty {
             let total = last7Days.reduce(UInt64(0)) { $0 + $1.totalKeystrokes }
             sevenDayAvg = total / UInt64(last7Days.count)
+            let totalWords = last7Days.reduce(UInt64(0)) { $0 + $1.totalWords }
+            sevenDayAvgWords = totalWords / UInt64(last7Days.count)
         } else {
             sevenDayAvg = 0
+            sevenDayAvgWords = 0
         }
 
         // 30-day average (excluding today)
@@ -189,14 +234,23 @@ final class StatsRepository: ObservableObject {
         if !last30Days.isEmpty {
             let total = last30Days.reduce(UInt64(0)) { $0 + $1.totalKeystrokes }
             thirtyDayAvg = total / UInt64(last30Days.count)
+            let totalWords = last30Days.reduce(UInt64(0)) { $0 + $1.totalWords }
+            thirtyDayAvgWords = totalWords / UInt64(last30Days.count)
         } else {
             thirtyDayAvg = 0
+            thirtyDayAvgWords = 0
         }
 
-        // Record (all time high)
+        // Record (all time high) - keystrokes
         if let record = allStats.max(by: { $0.totalKeystrokes < $1.totalKeystrokes }) {
             recordCount = record.totalKeystrokes
             recordDate = DateHelpers.shortDisplayString(from: record.id)
+        }
+
+        // Record (all time high) - words
+        if let record = allStats.max(by: { $0.totalWords < $1.totalWords }) {
+            recordWords = record.totalWords
+            recordWordsDate = DateHelpers.shortDisplayString(from: record.id)
         }
     }
 
