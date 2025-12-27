@@ -10,6 +10,16 @@ final class KeystrokeMonitor: ObservableObject {
     // Word separator keycodes
     private static let wordSeparators: Set<Int64> = [49, 36, 76, 48]  // space, enter, return, tab
 
+    // Keys to ignore for word counting (don't affect word state)
+    private static let ignoredKeys: Set<Int64> = [
+        51,  // delete (backspace)
+        117, // forward delete
+        123, 124, 125, 126  // arrows: left, right, down, up
+    ]
+
+    // Word counting state - true means last key was a separator (or start of session)
+    private var lastWasSeparator = true
+
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var runLoopThread: Thread?
@@ -45,10 +55,22 @@ final class KeystrokeMonitor: ObservableObject {
 
                 if type == .keyDown {
                     let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-                    let isWordSeparator = KeystrokeMonitor.wordSeparators.contains(keycode)
+
+                    // Ignore navigation/editing keys for word counting
+                    let isIgnored = KeystrokeMonitor.ignoredKeys.contains(keycode)
+                    let isSeparator = KeystrokeMonitor.wordSeparators.contains(keycode)
+
+                    // Thread-safe state check and update
+                    monitor.lock.lock()
+                    let shouldCountWord = !isIgnored && !isSeparator && monitor.lastWasSeparator
+                    if !isIgnored {
+                        monitor.lastWasSeparator = isSeparator
+                    }
+                    monitor.lock.unlock()
+
                     DispatchQueue.main.async {
                         monitor.keystrokeCount += 1
-                        if isWordSeparator {
+                        if shouldCountWord {
                             monitor.wordCount += 1
                         }
                     }
@@ -125,25 +147,4 @@ final class KeystrokeMonitor: ObservableObject {
         }
     }
 
-    /// Reset the keystroke count
-    func reset() {
-        DispatchQueue.main.async {
-            self.keystrokeCount = 0
-        }
-    }
-
-    /// Thread-safe consume count
-    func consumeCount() -> UInt64 {
-        var count: UInt64 = 0
-        if Thread.isMainThread {
-            count = keystrokeCount
-            keystrokeCount = 0
-        } else {
-            DispatchQueue.main.sync {
-                count = self.keystrokeCount
-                self.keystrokeCount = 0
-            }
-        }
-        return count
-    }
 }
